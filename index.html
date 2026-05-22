@@ -1,0 +1,1633 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gestor de Proyectos</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  /* ============================================================
+     DISEÑO — cálido pero funcional, espacio de trabajo priorizado.
+     Fraunces (display, con carácter) + DM Sans (lectura).
+     Variables propias del archivo (resuelven en standalone).
+     ============================================================ */
+  :root {
+    --bg:        #ece6da;   /* fondo general, crema cálido */
+    --panel:     #f7f3ea;   /* paneles claros */
+    --card:      #fffdf8;   /* tarjetas de nota, casi blanco cálido */
+    --ink:       #2b2620;   /* texto principal, casi negro cálido */
+    --ink-soft:  #6f675b;   /* texto secundario */
+    --ink-faint: #a59c8c;   /* metadatos, muy tenue */
+    --line:      #ddd4c4;   /* bordes suaves */
+    --accent:    #9a5b3f;   /* terracota, acento cálido */
+    --accent-d:  #7d4731;   /* terracota oscuro hover */
+    --sage:      #5d6b54;   /* verde salvia, segundo acento */
+    --sage-bg:   #e6e8df;
+    --sel:       #e4dccd;   /* selección en sidebar */
+    --shadow:    0 1px 2px rgba(60,45,25,0.05), 0 4px 16px rgba(60,45,25,0.04);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    font-family: "DM Sans", -apple-system, BlinkMacSystemFont, sans-serif;
+    color: var(--ink);
+    background: var(--bg);
+    line-height: 1.6;
+    font-size: 15px;
+    -webkit-font-smoothing: antialiased;
+  }
+  #app { display: flex; height: 100vh; }
+
+  /* ---------- BARRA LATERAL (navegación, silenciosa) ---------- */
+  #sidebar {
+    width: 270px; flex-shrink: 0;
+    background: var(--panel);
+    border-right: 1px solid var(--line);
+    padding: 22px 14px 28px;
+    overflow-y: auto; height: 100vh;
+    display: flex; flex-direction: column;
+  }
+  #sidebar h1 {
+    font-family: "Fraunces", serif; font-weight: 600;
+    font-size: 21px; letter-spacing: -0.01em; color: var(--ink);
+    padding: 0 8px; line-height: 1.2;
+  }
+  #sidebar .sub {
+    font-size: 11px; color: var(--ink-faint); padding: 2px 8px 22px;
+    text-transform: uppercase; letter-spacing: 0.08em;
+  }
+
+  .proyecto-item { margin-bottom: 2px; }
+  .proyecto-header {
+    display: flex; align-items: center; gap: 6px;
+    padding: 9px 9px; border-radius: 8px; cursor: pointer;
+    transition: background 0.12s ease;
+  }
+  .proyecto-header:hover { background: var(--sel); }
+  .proyecto-header.activo { background: var(--sel); }
+  .caret {
+    flex-shrink: 0; width: 16px; text-align: center;
+    font-size: 10px; color: var(--ink-faint);
+    transition: transform 0.15s ease; user-select: none;
+  }
+  .caret.abierto { transform: rotate(90deg); }
+  .proyecto-header span.nombre {
+    font-weight: 600; flex: 1; font-size: 14.5px; color: var(--ink);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .seccion-lista {
+    margin: 2px 0 8px 0; padding-left: 22px;
+    overflow: hidden;
+  }
+  .seccion-item {
+    display: flex; align-items: center; gap: 6px;
+    padding: 6px 9px; border-radius: 7px; cursor: pointer; font-size: 13.5px;
+    color: var(--ink-soft); transition: background 0.12s ease;
+    position: relative;
+  }
+  .seccion-item::before {
+    content: ""; position: absolute; left: -10px; top: 50%;
+    width: 5px; height: 1px; background: var(--line);
+  }
+  .seccion-item.activo { background: var(--accent); color: #fff; font-weight: 500; }
+  .seccion-item.activo::before { display: none; }
+  .seccion-item:not(.activo):hover { background: var(--sel); color: var(--ink); }
+  .seccion-item span.s-nombre { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .mini-btns { display: flex; gap: 2px; opacity: 0; transition: opacity 0.12s; }
+  .proyecto-header:hover .mini-btns,
+  .seccion-item:hover .mini-btns,
+  .nota:hover .mini-btns { opacity: 0.6; }
+  .mini-btns button {
+    border: none; background: transparent; cursor: pointer; font-size: 12px;
+    padding: 3px 5px; border-radius: 5px; color: inherit; line-height: 1;
+  }
+  .mini-btns button:hover { background: rgba(0,0,0,0.12); opacity: 1; }
+  .mini-btns button.mover { font-size: 9px; padding: 3px 3px; }
+  .mini-btns button.mover:disabled { opacity: 0.25; cursor: default; }
+  .mini-btns button.mover:disabled:hover { background: transparent; }
+
+  .add-link {
+    font-size: 12.5px; color: var(--ink-faint); cursor: pointer;
+    padding: 5px 9px; display: inline-block; border-radius: 6px;
+    transition: all 0.12s;
+  }
+  .add-link:hover { background: var(--sel); color: var(--accent); }
+
+  .sidebar-foot { margin-top: auto; padding-top: 18px; }
+
+  /* ---------- ÁREA DE TRABAJO (protagonista) ---------- */
+  #main {
+    flex: 1; overflow-y: auto; height: 100vh;
+    padding: 38px 0;
+  }
+  .main-inner { max-width: 860px; margin: 0 auto; padding: 0 48px; }
+  .main-inner.editor-modo { max-width: 1000px; }
+
+  #main-header { margin-bottom: 30px; }
+  #main-header .ruta {
+    font-size: 12px; color: var(--ink-faint); margin-bottom: 8px;
+    text-transform: uppercase; letter-spacing: 0.07em;
+  }
+  #main-header h2 {
+    font-family: "Fraunces", serif; font-weight: 600;
+    font-size: 32px; letter-spacing: -0.02em; line-height: 1.1;
+    color: var(--ink); margin-bottom: 18px;
+  }
+
+  .nota {
+    background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+    padding: 22px 24px; margin-bottom: 16px;
+    box-shadow: var(--shadow);
+    transition: border-color 0.15s ease, transform 0.15s ease;
+  }
+  .nota:hover { border-color: #cbbfa8; }
+  .nota-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+  .nota-titulo {
+    font-family: "Fraunces", serif; font-weight: 600;
+    font-size: 19px; letter-spacing: -0.01em; line-height: 1.25;
+    color: var(--ink); flex: 1;
+  }
+  .nota-cuerpo {
+    white-space: pre-wrap; margin: 12px 0; color: #4a4338;
+    font-size: 15.5px; line-height: 1.7;
+  }
+  .adjuntos-lista { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0; }
+  .adjunto-link {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 13px; padding: 6px 12px; border-radius: 8px;
+    background: var(--sage-bg); color: var(--sage); text-decoration: none;
+    border: 1px solid transparent; font-weight: 500; transition: all 0.12s;
+  }
+  .adjunto-link:hover { border-color: var(--sage); }
+  .adj-fila { display: flex; gap: 8px; margin-top: 8px; align-items: center; }
+  .adj-fila input { flex: 1; }
+  .adj-fila button {
+    border: none; background: var(--sel); border-radius: 7px;
+    cursor: pointer; padding: 8px 11px; color: var(--ink-soft);
+  }
+  .adj-fila button:hover { background: var(--line); }
+
+  .nota-pie { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 14px; }
+  .nota-meta {
+    font-size: 11.5px; color: var(--ink-faint); display: flex; gap: 14px;
+    flex-wrap: wrap; align-items: center; flex: 1;
+  }
+  .tipo-badge {
+    font-size: 11px; padding: 3px 10px; border-radius: 20px; font-weight: 500;
+    background: var(--accent); color: #fff; letter-spacing: 0.02em;
+  }
+  .tag {
+    font-size: 11.5px; padding: 3px 9px; border-radius: 20px;
+    background: var(--sage-bg); color: var(--sage); margin-right: 5px; font-weight: 500;
+  }
+  .check-accion {
+    display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px;
+    cursor: pointer; color: var(--accent); font-weight: 500;
+    padding: 4px 10px; border-radius: 20px; background: rgba(154,91,63,0.08);
+  }
+  .check-accion.hecha { color: var(--sage); background: rgba(93,107,84,0.1); text-decoration: line-through; }
+  .check-accion input { accent-color: currentColor; cursor: pointer; }
+
+  /* ---------- BOTONES ---------- */
+  button.btn {
+    border: none; border-radius: 9px; padding: 10px 18px; cursor: pointer;
+    font-size: 14px; font-weight: 600; font-family: inherit;
+    background: var(--accent); color: #fff; transition: background 0.12s;
+  }
+  button.btn:hover { background: var(--accent-d); }
+  button.btn.sec { background: transparent; color: var(--ink-soft); border: 1px solid var(--line); }
+  button.btn.sec:hover { background: var(--sel); color: var(--ink); }
+
+  .btn-nota-nueva {
+    background: var(--accent); color: #fff; border: none; border-radius: 9px;
+    padding: 11px 20px; font-size: 14px; font-weight: 600; cursor: pointer;
+    font-family: inherit; transition: background 0.12s;
+  }
+  .btn-nota-nueva:hover { background: var(--accent-d); }
+
+  /* ---------- MODAL ---------- */
+  #modal-bg {
+    display: none; position: fixed; inset: 0; background: rgba(43,38,32,0.42);
+    backdrop-filter: blur(2px); z-index: 100; align-items: center; justify-content: center;
+  }
+  #modal-bg.abierto { display: flex; }
+  #modal {
+    background: var(--panel); border-radius: 16px; padding: 30px;
+    width: 560px; max-width: 92vw; max-height: 88vh; overflow-y: auto;
+    box-shadow: 0 20px 60px rgba(43,38,32,0.25);
+  }
+  #modal h3 {
+    font-family: "Fraunces", serif; font-weight: 600; font-size: 23px;
+    margin-bottom: 20px; letter-spacing: -0.01em;
+  }
+  #modal label {
+    display: block; font-size: 12px; color: var(--ink-soft); margin: 16px 0 6px;
+    text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600;
+  }
+  #modal input[type=text], #modal textarea, #modal select {
+    width: 100%; padding: 11px 13px; border: 1px solid var(--line); border-radius: 9px;
+    font-size: 14.5px; font-family: inherit; background: var(--card); color: var(--ink);
+    transition: border-color 0.12s;
+  }
+  #modal input[type=text]:focus, #modal textarea:focus, #modal select:focus {
+    outline: none; border-color: var(--accent);
+  }
+  #modal textarea { min-height: 150px; resize: vertical; line-height: 1.6; }
+  .modal-acciones { margin-top: 26px; display: flex; gap: 10px; justify-content: flex-end; }
+
+  .tag-chips { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 4px; }
+  .tag-chip {
+    font-size: 12.5px; padding: 5px 12px; border-radius: 20px; cursor: pointer;
+    background: var(--card); border: 1px solid var(--line); color: var(--ink-soft);
+    transition: all 0.12s; font-weight: 500;
+  }
+  .tag-chip:hover { border-color: var(--sage); }
+  .tag-chip.sel { background: var(--sage); color: #fff; border-color: var(--sage); }
+
+  #modal input[type=checkbox] { accent-color: var(--accent); width: auto; }
+  #modal label.inline-check {
+    display: flex; align-items: center; gap: 9px; text-transform: none;
+    letter-spacing: 0; font-weight: 500; font-size: 14px; color: var(--ink);
+    cursor: pointer;
+  }
+
+  .vacio {
+    color: var(--ink-faint); padding: 60px 20px; text-align: center;
+    font-family: "Fraunces", serif; font-style: italic; font-size: 17px;
+  }
+
+  /* ---------- NOTA COLAPSABLE ---------- */
+  .nota { cursor: default; }
+  .nota.colapsada { padding: 14px 22px; cursor: pointer; }
+  .nota.colapsada:hover { border-color: #cbbfa8; }
+  .nota-cabecera {
+    display: flex; align-items: center; gap: 12px;
+  }
+  .nota.colapsada .nota-titulo { font-size: 16.5px; }
+  .nota-flecha {
+    flex-shrink: 0; font-size: 10px; color: var(--ink-faint);
+    transition: transform 0.15s ease; width: 14px; text-align: center;
+  }
+  .nota.expandida .nota-flecha { transform: rotate(90deg); }
+  .nota-resumen {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    font-size: 11.5px; color: var(--ink-faint); margin-left: auto;
+  }
+  .nota.expandida .nota-resumen { display: none; }
+  .punto-accion {
+    width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+    background: var(--accent);
+  }
+  .punto-accion.hecha { background: var(--sage); }
+  .nota-detalle { /* contenido que solo se ve expandido */ }
+  .nota.colapsada .nota-detalle { display: none; }
+
+  /* ---------- EDITOR A PANTALLA COMPLETA ---------- */
+  .editor { display: flex; flex-direction: column; gap: 4px; }
+  .editor-volver {
+    display: inline-flex; align-items: center; gap: 7px; cursor: pointer;
+    color: var(--ink-soft); font-size: 13px; font-weight: 500;
+    margin-bottom: 18px; width: fit-content; padding: 6px 0;
+  }
+  .editor-volver:hover { color: var(--accent); }
+  .editor input.titulo-input {
+    width: 100%; border: none; background: transparent;
+    font-family: "Fraunces", serif; font-weight: 600; font-size: 30px;
+    letter-spacing: -0.02em; color: var(--ink); padding: 6px 0;
+    line-height: 1.15;
+  }
+  .editor input.titulo-input::placeholder { color: var(--ink-faint); }
+  .editor input.titulo-input:focus { outline: none; }
+  .editor textarea.cuerpo-input {
+    width: 100%; border: none; background: transparent; resize: none;
+    font-family: "DM Sans", sans-serif; font-size: 16.5px; line-height: 1.75;
+    color: #4a4338; padding: 10px 0; min-height: 280px;
+  }
+  .editor textarea.cuerpo-input::placeholder { color: var(--ink-faint); }
+  .editor textarea.cuerpo-input:focus { outline: none; }
+  .editor-sep { height: 1px; background: var(--line); margin: 16px 0; }
+  .editor-campos { display: flex; flex-direction: column; gap: 16px; }
+  .editor-campo label {
+    display: block; font-size: 11px; color: var(--ink-soft); margin-bottom: 7px;
+    text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600;
+  }
+  .editor-campo select {
+    padding: 9px 12px; border: 1px solid var(--line); border-radius: 8px;
+    font-size: 14px; font-family: inherit; background: var(--card);
+    color: var(--ink); min-width: 180px;
+  }
+  .editor-campo select:focus { outline: none; border-color: var(--accent); }
+  .editor-acciones {
+    display: flex; gap: 10px; margin-top: 26px; padding-top: 20px;
+    border-top: 1px solid var(--line);
+  }
+  .editor-inline-check {
+    display: flex; align-items: center; gap: 9px; font-size: 14px;
+    color: var(--ink); cursor: pointer;
+  }
+  .editor-inline-check input { accent-color: var(--accent); }
+  .lista-controles {
+    display: flex; align-items: center; gap: 14px; margin-bottom: 18px;
+    font-size: 12.5px; color: var(--ink-faint);
+  }
+  .lista-controles span { cursor: pointer; }
+  .lista-controles span:hover { color: var(--accent); }
+
+  #aviso-config {
+    background: #f6e8c8; border: 1px solid #e3cd9a; color: #6b5320;
+    padding: 13px 17px; border-radius: 10px; margin-bottom: 22px; font-size: 13px;
+  }
+
+  /* scrollbars sutiles */
+  ::-webkit-scrollbar { width: 10px; }
+  ::-webkit-scrollbar-thumb { background: #cdbfa6; border-radius: 6px; border: 3px solid transparent; background-clip: content-box; }
+  ::-webkit-scrollbar-thumb:hover { background: #b8a786; background-clip: content-box; }
+
+  /* ---------- NAVEGACIÓN GLOBAL (buscar, pendientes) ---------- */
+  .nav-global { margin-bottom: 6px; }
+  .nav-item {
+    display: flex; align-items: center; gap: 9px;
+    padding: 9px 9px; border-radius: 8px; cursor: pointer;
+    font-size: 14px; font-weight: 600; color: var(--ink-soft);
+    transition: background 0.12s;
+  }
+  .nav-item:hover { background: var(--sel); color: var(--ink); }
+  .nav-item.activo { background: var(--accent); color: #fff; }
+  .nav-sep { height: 1px; background: var(--line); margin: 10px 4px 14px; }
+
+  /* ---------- PANEL DE FILTROS ---------- */
+  .filtros {
+    background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+    padding: 18px 20px; margin-bottom: 22px;
+  }
+  .filtros-fila { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; }
+  .filtro-grupo { display: flex; flex-direction: column; gap: 5px; }
+  .filtro-grupo.crece { flex: 1; min-width: 180px; }
+  .filtros label {
+    font-size: 10.5px; color: var(--ink-soft); text-transform: uppercase;
+    letter-spacing: 0.06em; font-weight: 600;
+  }
+  .filtros input[type=text], .filtros input[type=date], .filtros select {
+    padding: 9px 11px; border: 1px solid var(--line); border-radius: 8px;
+    font-size: 14px; font-family: inherit; background: var(--panel); color: var(--ink);
+  }
+  .filtros input:focus, .filtros select:focus { outline: none; border-color: var(--accent); }
+  .filtro-limpiar {
+    font-size: 12.5px; color: var(--ink-faint); cursor: pointer; padding: 9px 4px;
+  }
+  .filtro-limpiar:hover { color: var(--accent); }
+
+  /* ruta de resultado (de qué proyecto/sección viene una nota) */
+  .resultado-ruta {
+    font-size: 11px; color: var(--accent); margin-bottom: 8px; cursor: pointer;
+    text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600;
+    display: inline-block;
+  }
+  .resultado-ruta:hover { text-decoration: underline; }
+
+  /* resaltado de término buscado */
+  mark.resaltado {
+    background: #f2d98c; color: var(--ink); border-radius: 3px;
+    padding: 0 2px; font-weight: 600;
+  }
+  /* fragmento de contexto en resultados de búsqueda */
+  .nota-snippet {
+    font-size: 14px; color: var(--ink-soft); line-height: 1.6;
+    margin: 8px 0 2px; padding-left: 26px;
+  }
+  .nota-snippet .elipsis { color: var(--ink-faint); }
+
+  /* ---------- BOTÓN MENÚ Y OVERLAY (solo móvil) ---------- */
+  #menu-toggle {
+    display: none; position: fixed; top: 14px; left: 14px; z-index: 60;
+    width: 44px; height: 44px; border: none; border-radius: 11px;
+    background: var(--panel); color: var(--ink); font-size: 20px; cursor: pointer;
+    box-shadow: var(--shadow); align-items: center; justify-content: center;
+    border: 1px solid var(--line);
+  }
+  #sidebar-overlay {
+    display: none; position: fixed; inset: 0; background: rgba(43,38,32,0.4);
+    z-index: 49; backdrop-filter: blur(1px);
+  }
+  #sidebar-overlay.visible { display: block; }
+
+  /* ============================================================
+     RESPONSIVE — celular y tablet pequeña
+     ============================================================ */
+  @media (max-width: 760px) {
+    #menu-toggle { display: flex; }
+
+    /* la barra lateral se vuelve panel deslizante */
+    #sidebar {
+      position: fixed; top: 0; left: 0; z-index: 50;
+      width: 80vw; max-width: 320px; height: 100vh;
+      transform: translateX(-100%);
+      transition: transform 0.25s ease;
+      box-shadow: 4px 0 24px rgba(43,38,32,0.18);
+      padding-top: 22px;
+    }
+    #sidebar.abierto { transform: translateX(0); }
+
+    /* el área de notas ocupa todo el ancho */
+    #main { padding: 64px 0 40px; }
+    .main-inner, .main-inner.editor-modo {
+      max-width: 100%; padding: 0 18px;
+    }
+
+    /* tipografía un punto menor y toques más grandes */
+    #main-header h2 { font-size: 26px; }
+    .nota { padding: 18px 16px; }
+    .nota.colapsada { padding: 14px 16px; }
+    .nota-cabecera { gap: 8px; flex-wrap: wrap; }
+    .nota-resumen { width: 100%; margin-left: 26px; margin-top: 6px; }
+    .nota-titulo { font-size: 17px; }
+
+    /* el editor: título y cuerpo algo menores en móvil */
+    .editor input.titulo-input { font-size: 25px; }
+    .editor textarea.cuerpo-input { font-size: 16px; min-height: 220px; }
+    .editor-acciones { flex-direction: column-reverse; }
+    .editor-acciones .btn { width: 100%; padding: 13px; }
+
+    /* botones del editor y de la nota: área de toque cómoda */
+    .mini-btns { opacity: 0.6; }   /* en móvil no hay hover, siempre visibles */
+    .mini-btns button { padding: 8px 9px; font-size: 15px; }
+
+    /* modales a casi pantalla completa */
+    #modal { padding: 22px; border-radius: 14px; }
+
+    /* adjuntos: apilar nombre y enlace en columna */
+    .adj-fila { flex-wrap: wrap; }
+    .adj-fila input { flex: 1 1 100%; }
+    .adj-fila button { flex: 0 0 auto; }
+
+    .lista-controles { flex-wrap: wrap; gap: 10px 14px; }
+  }
+
+  /* pantallas muy estrechas */
+  @media (max-width: 380px) {
+    #main-header h2 { font-size: 23px; }
+    .editor input.titulo-input { font-size: 22px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ============================================================
+     PASO 1 — PEGA AQUÍ TU CONFIGURACIÓN DE FIREBASE
+     Consola Firebase > Configuración del proyecto > Tus apps > Config
+     ============================================================ -->
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import {
+  getFirestore, collection, doc, addDoc, getDocs, updateDoc, deleteDoc, setDoc,
+  query, where, orderBy, serverTimestamp, writeBatch, Timestamp
+} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import {
+  getStorage, ref as storageRef, uploadBytesResumable, getDownloadURL, deleteObject
+} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js";
+
+// ⬇️⬇️⬇️ REEMPLAZA ESTE BLOQUE CON TU firebaseConfig ⬇️⬇️⬇️
+const firebaseConfig = {
+  apiKey: "AIzaSyBNuCXf4vb4-Hbb-Re4gAyeESClVuyxB_s",
+  authDomain: "gestor-de-proyectos-60276.firebaseapp.com",
+  projectId: "gestor-de-proyectos-60276",
+  storageBucket: "gestor-de-proyectos-60276.firebasestorage.app",
+  messagingSenderId: "437981330120",
+  appId: "1:437981330120:web:060aa25e3dc9d6a35783fd"
+};
+// ⬆️⬆️⬆️ REEMPLAZA ESTE BLOQUE ⬆️⬆️⬆️
+
+const configIncompleta = firebaseConfig.apiKey === "PEGA_AQUI";
+
+let db = null;
+let storage = null;
+if (!configIncompleta) {
+  const fbApp = initializeApp(firebaseConfig);
+  db = getFirestore(fbApp);
+  storage = getStorage(fbApp);
+}
+
+/* ============================================================
+   MODELO DE DATOS (Firestore — 3 colecciones planas)
+   ------------------------------------------------------------
+   proyectos:  { nombre, descripcion, createdAt }
+   secciones:  { nombre, proyectoId, createdAt }
+   notas:      { titulo, cuerpo, tipo, tags[], esAccion, hecha,
+                 adjuntos[], seccionId, createdAt, updatedAt }
+                 adjuntos: [ { nombre, url } ]  (enlaces OneDrive/Drive)
+   tipos:      { nombre }           (catálogo editable)
+   tags:       { nombre }           (catálogo editable)
+
+   Plano a propósito: añadir un campo nuevo más adelante no obliga
+   a migrar nada. El borrado en cascada se hace por consulta+batch.
+   ============================================================ */
+
+// Estado en memoria
+const estado = {
+  proyectos: [],
+  secciones: [],
+  notas: [],
+  tipos: [],
+  tags: [],
+  proyectoActivo: null,
+  seccionActiva: null,
+  expandidos: new Set(),    // ids de proyectos con secciones desplegadas
+  notasAbiertas: new Set(), // ids de notas desplegadas en la lista
+  editando: undefined,      // undefined = no editor; null = nota nueva; obj = editando esa nota
+  vista: "seccion",         // "seccion" | "busqueda" | "pendientes"
+  filtro: { texto: "", tipo: "", tag: "", desde: "", hasta: "" },
+};
+
+// ---------- Utilidades ----------
+const $ = (sel) => document.querySelector(sel);
+const fmtFecha = (ts) => {
+  if (!ts) return "—";
+  const d = ts.toDate ? ts.toDate() : new Date(ts);
+  return d.toLocaleDateString("es-CO", { year:"numeric", month:"short", day:"numeric" }) +
+    " · " + d.toLocaleTimeString("es-CO", { hour:"2-digit", minute:"2-digit" });
+};
+const fmtFechaCorta = (ts) => {
+  if (!ts) return "";
+  const d = ts.toDate ? ts.toDate() : new Date(ts);
+  return d.toLocaleDateString("es-CO", { year:"2-digit", month:"short", day:"numeric" });
+};
+
+// ---------- Lectura ----------
+async function cargarTodo() {
+  if (!db) return;
+  const [ps, ss, ns, ts, tg] = await Promise.all([
+    getDocs(collection(db, "proyectos")),
+    getDocs(collection(db, "secciones")),
+    getDocs(query(collection(db, "notas"), orderBy("createdAt", "desc"))),
+    getDocs(collection(db, "tipos")),
+    getDocs(collection(db, "tags")),
+  ]);
+  estado.proyectos = ps.docs.map(d => ({ id: d.id, ...d.data() }));
+  estado.secciones = ss.docs.map(d => ({ id: d.id, ...d.data() }));
+  estado.notas     = ns.docs.map(d => ({ id: d.id, ...d.data() }));
+  estado.tipos     = ts.docs.map(d => ({ id: d.id, ...d.data() }));
+  estado.tags      = tg.docs.map(d => ({ id: d.id, ...d.data() }));
+  // ordenar por campo "orden" si existe; si no, por fecha de creación (datos antiguos)
+  const porOrden = (a, b) => {
+    const oa = (a.orden ?? null), ob = (b.orden ?? null);
+    if (oa !== null && ob !== null) return oa - ob;
+    if (oa !== null) return -1;
+    if (ob !== null) return 1;
+    return fechaMs(a.createdAt) - fechaMs(b.createdAt);
+  };
+  estado.proyectos.sort(porOrden);
+  estado.secciones.sort(porOrden);
+  render();
+}
+
+// ---------- Proyectos ----------
+async function crearProyecto(nombre, descripcion) {
+  await addDoc(collection(db, "proyectos"), { nombre, descripcion: descripcion||"", createdAt: serverTimestamp() });
+  await cargarTodo();
+}
+async function editarProyecto(id, nombre, descripcion) {
+  await updateDoc(doc(db, "proyectos", id), { nombre, descripcion: descripcion||"" });
+  await cargarTodo();
+}
+async function borrarProyecto(id) {
+  // cascada: secciones del proyecto + notas de esas secciones
+  const secs = estado.secciones.filter(s => s.proyectoId === id);
+  const secIds = secs.map(s => s.id);
+  const notas = estado.notas.filter(n => secIds.includes(n.seccionId));
+  // borrar archivos subidos de todas las notas afectadas
+  for (const n of notas) { await borrarArchivosDeNota(n); }
+  const batch = writeBatch(db);
+  notas.forEach(n => batch.delete(doc(db, "notas", n.id)));
+  secs.forEach(s => batch.delete(doc(db, "secciones", s.id)));
+  batch.delete(doc(db, "proyectos", id));
+  await batch.commit();
+  if (estado.proyectoActivo === id) { estado.proyectoActivo = null; estado.seccionActiva = null; }
+  await cargarTodo();
+}
+
+// ---------- Secciones ----------
+async function crearSeccion(nombre, proyectoId) {
+  await addDoc(collection(db, "secciones"), { nombre, proyectoId, createdAt: serverTimestamp() });
+  await cargarTodo();
+}
+async function editarSeccion(id, nombre) {
+  await updateDoc(doc(db, "secciones", id), { nombre });
+  await cargarTodo();
+}
+async function borrarSeccion(id) {
+  const notas = estado.notas.filter(n => n.seccionId === id);
+  for (const n of notas) { await borrarArchivosDeNota(n); }
+  const batch = writeBatch(db);
+  notas.forEach(n => batch.delete(doc(db, "notas", n.id)));
+  batch.delete(doc(db, "secciones", id));
+  await batch.commit();
+  if (estado.seccionActiva === id) estado.seccionActiva = null;
+  await cargarTodo();
+}
+
+// ---------- Reordenar (proyectos y secciones) ----------
+// Reescribe el campo "orden" de una lista según su posición actual, tras
+// intercambiar el elemento en idx con su vecino (dir = -1 sube, +1 baja).
+async function moverEnLista(coleccion, lista, idx, dir) {
+  const destino = idx + dir;
+  if (destino < 0 || destino >= lista.length) return; // ya está en el borde
+  const arr = lista.slice();
+  const tmp = arr[idx]; arr[idx] = arr[destino]; arr[destino] = tmp;
+  // reasignar orden 0..n y persistir todo el conjunto reordenado
+  const batch = writeBatch(db);
+  arr.forEach((item, i) => batch.update(doc(db, coleccion, item.id), { orden: i }));
+  await batch.commit();
+  await cargarTodo();
+}
+async function moverProyecto(idx, dir) {
+  await moverEnLista("proyectos", estado.proyectos, idx, dir);
+}
+async function moverSeccion(proyectoId, idx, dir) {
+  const secs = estado.secciones.filter(s => s.proyectoId === proyectoId);
+  await moverEnLista("secciones", secs, idx, dir);
+}
+
+// ---------- Notas ----------
+async function crearNota(data) {
+  await addDoc(collection(db, "notas"), {
+    ...data, createdAt: serverTimestamp(), updatedAt: serverTimestamp()
+  });
+  await cargarTodo();
+}
+async function editarNota(id, data) {
+  await updateDoc(doc(db, "notas", id), { ...data, updatedAt: serverTimestamp() });
+  await cargarTodo();
+}
+async function borrarNota(id) {
+  const n = estado.notas.find(x => x.id === id);
+  if (n) await borrarArchivosDeNota(n);
+  await deleteDoc(doc(db, "notas", id));
+  await cargarTodo();
+}
+async function toggleHecha(id, valor) {
+  await updateDoc(doc(db, "notas", id), { hecha: valor });
+  await cargarTodo();
+}
+
+// ---------- Catálogos: tipos y tags ----------
+async function crearTipo(nombre) {
+  await addDoc(collection(db, "tipos"), { nombre });
+  await cargarTodo();
+}
+async function borrarTipo(id) { await deleteDoc(doc(db, "tipos", id)); await cargarTodo(); }
+async function crearTag(nombre) {
+  await addDoc(collection(db, "tags"), { nombre });
+  await cargarTodo();
+}
+async function borrarTag(id) { await deleteDoc(doc(db, "tags", id)); await cargarTodo(); }
+
+/* ============================================================
+   EXPORTACIÓN / RESPALDO
+   Formato pensado para ser importable más adelante:
+   incluye versión, fecha, y las 5 colecciones con sus campos.
+   ============================================================ */
+function tsAISO(ts) {
+  if (!ts) return null;
+  const d = ts.toDate ? ts.toDate() : new Date(ts);
+  return d.toISOString();
+}
+function exportarRespaldo() {
+  const data = {
+    _formato: "gestor-proyectos-respaldo",
+    _version: 1,
+    _exportado: new Date().toISOString(),
+    proyectos: estado.proyectos.map(p => ({
+      id: p.id, nombre: p.nombre, descripcion: p.descripcion||"", orden: p.orden ?? null, createdAt: tsAISO(p.createdAt)
+    })),
+    secciones: estado.secciones.map(s => ({
+      id: s.id, nombre: s.nombre, proyectoId: s.proyectoId, orden: s.orden ?? null, createdAt: tsAISO(s.createdAt)
+    })),
+    notas: estado.notas.map(n => ({
+      id: n.id, titulo: n.titulo||"", cuerpo: n.cuerpo||"", tipo: n.tipo||"",
+      tags: n.tags||[], esAccion: !!n.esAccion, hecha: !!n.hecha,
+      adjuntos: n.adjuntos||[], seccionId: n.seccionId,
+      createdAt: tsAISO(n.createdAt), updatedAt: tsAISO(n.updatedAt)
+    })),
+    tipos: estado.tipos.map(t => ({ id: t.id, nombre: t.nombre })),
+    tags: estado.tags.map(t => ({ id: t.id, nombre: t.nombre })),
+  };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  const fecha = new Date().toISOString().slice(0,10);
+  a.href = url;
+  a.download = `respaldo-gestor-${fecha}.json`;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+}
+
+// Convierte una fecha ISO del respaldo a Timestamp de Firestore (o null)
+function isoATs(iso) {
+  if (!iso) return null;
+  const d = new Date(iso);
+  return isNaN(d.getTime()) ? null : Timestamp.fromDate(d);
+}
+
+// Ejecuta operaciones en lotes de 400 (límite de Firestore es 500)
+async function ejecutarEnLotes(operaciones) {
+  const TAM = 400;
+  for (let i = 0; i < operaciones.length; i += TAM) {
+    const batch = writeBatch(db);
+    operaciones.slice(i, i + TAM).forEach(op => op(batch));
+    await batch.commit();
+  }
+}
+
+// IMPORTAR: reemplaza TODO el contenido actual por el del respaldo (opción A)
+async function importarRespaldo(texto) {
+  let data;
+  try {
+    data = JSON.parse(texto);
+  } catch (e) {
+    alert("El archivo no es un JSON válido. Asegúrate de elegir un respaldo exportado por el gestor.");
+    return;
+  }
+  // validación de formato
+  if (!data || data._formato !== "gestor-proyectos-respaldo" || !Array.isArray(data.notas)) {
+    alert("Este archivo no parece un respaldo del gestor. No se importó nada.");
+    return;
+  }
+
+  const nP = (data.proyectos||[]).length, nS = (data.secciones||[]).length, nN = (data.notas||[]).length;
+  const actuales = estado.proyectos.length + estado.secciones.length + estado.notas.length;
+
+  // primera confirmación: explica claramente qué pasará
+  const fechaResp = data._exportado ? new Date(data._exportado).toLocaleDateString("es-CO", {year:"numeric",month:"long",day:"numeric"}) : "fecha desconocida";
+  if (!confirm(
+    `Vas a RESTAURAR el respaldo del ${fechaResp}.\n\n` +
+    `Esto BORRARÁ todo lo que tienes ahora (${estado.proyectos.length} proyectos, ${estado.secciones.length} secciones, ${estado.notas.length} notas) ` +
+    `y lo reemplazará por el contenido del respaldo (${nP} proyectos, ${nS} secciones, ${nN} notas).\n\n` +
+    `Esta acción NO se puede deshacer. ¿Continuar?`
+  )) return;
+
+  // segunda confirmación si hay datos que se van a perder
+  if (actuales > 0) {
+    if (!confirm(
+      `Confirmación final.\n\nSe eliminarán definitivamente tus ${actuales} elementos actuales.\n` +
+      `Si no estás seguro, cancela y exporta primero un respaldo de lo que tienes ahora.\n\n¿Reemplazar todo?`
+    )) return;
+  }
+
+  try {
+    // 1) borrar todo lo existente
+    const borrados = [];
+    estado.notas.forEach(n => borrados.push(b => b.delete(doc(db, "notas", n.id))));
+    estado.secciones.forEach(s => borrados.push(b => b.delete(doc(db, "secciones", s.id))));
+    estado.proyectos.forEach(p => borrados.push(b => b.delete(doc(db, "proyectos", p.id))));
+    estado.tipos.forEach(t => borrados.push(b => b.delete(doc(db, "tipos", t.id))));
+    estado.tags.forEach(t => borrados.push(b => b.delete(doc(db, "tags", t.id))));
+    await ejecutarEnLotes(borrados);
+
+    // 2) escribir lo del respaldo, preservando IDs y fechas
+    const escrituras = [];
+    (data.proyectos||[]).forEach(p => escrituras.push(b => b.set(doc(db, "proyectos", p.id), {
+      nombre: p.nombre||"", descripcion: p.descripcion||"",
+      ...(p.orden != null ? { orden: p.orden } : {}),
+      createdAt: isoATs(p.createdAt) || serverTimestamp()
+    })));
+    (data.secciones||[]).forEach(s => escrituras.push(b => b.set(doc(db, "secciones", s.id), {
+      nombre: s.nombre||"", proyectoId: s.proyectoId,
+      ...(s.orden != null ? { orden: s.orden } : {}),
+      createdAt: isoATs(s.createdAt) || serverTimestamp()
+    })));
+    (data.notas||[]).forEach(n => escrituras.push(b => b.set(doc(db, "notas", n.id), {
+      titulo: n.titulo||"", cuerpo: n.cuerpo||"", tipo: n.tipo||"",
+      tags: n.tags||[], esAccion: !!n.esAccion, hecha: !!n.hecha,
+      adjuntos: n.adjuntos||[], seccionId: n.seccionId,
+      createdAt: isoATs(n.createdAt) || serverTimestamp(),
+      updatedAt: isoATs(n.updatedAt)
+    })));
+    (data.tipos||[]).forEach(t => escrituras.push(b => b.set(doc(db, "tipos", t.id), { nombre: t.nombre||"" })));
+    (data.tags||[]).forEach(t => escrituras.push(b => b.set(doc(db, "tags", t.id), { nombre: t.nombre||"" })));
+    await ejecutarEnLotes(escrituras);
+
+    // resetear estado de navegación y recargar
+    estado.proyectoActivo = null; estado.seccionActiva = null;
+    estado.vista = "seccion"; estado.editando = undefined;
+    estado.expandidos = new Set(); estado.notasAbiertas = new Set();
+    await cargarTodo();
+    alert(`Respaldo restaurado: ${nP} proyectos, ${nS} secciones, ${nN} notas.`);
+  } catch (e) {
+    alert("Hubo un error durante la importación: " + e.message + "\n\nEs posible que algunos datos se hayan restaurado parcialmente. Revisa el gestor.");
+  }
+}
+
+// abre el selector de archivo y dispara la importación
+function pedirArchivoEImportar() {
+  const input = document.createElement("input");
+  input.type = "file";
+  input.accept = "application/json,.json";
+  input.onchange = () => {
+    const file = input.files && input.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => importarRespaldo(reader.result);
+    reader.onerror = () => alert("No se pudo leer el archivo.");
+    reader.readAsText(file);
+  };
+  input.click();
+}
+
+/* ============================================================
+   ARCHIVOS EN STORAGE (subida directa + borrado)
+   Un adjunto subido es { nombre, url, storagePath }.
+   Los adjuntos por enlace NO tienen storagePath (no se tocan en Storage).
+   ============================================================ */
+// Sube un archivo y devuelve { nombre, url, storagePath }. onProgress(0-100).
+function subirArchivo(file, onProgress) {
+  return new Promise((resolve, reject) => {
+    if (!storage) { reject(new Error("Storage no está disponible")); return; }
+    // ruta única: archivos/<timestamp>_<nombre saneado>
+    const limpio = file.name.replace(/[^\w.\-]+/g, "_");
+    const path = `archivos/${Date.now()}_${limpio}`;
+    const r = storageRef(storage, path);
+    const tarea = uploadBytesResumable(r, file);
+    tarea.on("state_changed",
+      (snap) => { if (onProgress) onProgress(Math.round(snap.bytesTransferred / snap.totalBytes * 100)); },
+      (err) => reject(err),
+      async () => {
+        const url = await getDownloadURL(tarea.snapshot.ref);
+        resolve({ nombre: file.name, url, storagePath: path });
+      }
+    );
+  });
+}
+// Borra de Storage un archivo por su path. Silencioso si ya no existe.
+async function borrarArchivoStorage(path) {
+  if (!storage || !path) return;
+  try { await deleteObject(storageRef(storage, path)); }
+  catch (e) { /* puede que ya no exista; no es crítico */ }
+}
+// Borra todos los archivos subidos de una nota (no toca los adjuntos por enlace)
+async function borrarArchivosDeNota(n) {
+  const subidos = (n.adjuntos || []).filter(a => a.storagePath);
+  for (const a of subidos) { await borrarArchivoStorage(a.storagePath); }
+}
+
+/* ============================================================
+   FILTRADO Y BÚSQUEDA (en el navegador, sobre todas las notas)
+   ============================================================ */
+function rutaDeNota(n) {
+  const sec = estado.secciones.find(s => s.id === n.seccionId);
+  const proy = sec ? estado.proyectos.find(p => p.id === sec.proyectoId) : null;
+  return { proy: proy?.nombre || "—", sec: sec?.nombre || "—", proyId: proy?.id, secId: sec?.id };
+}
+function fechaMs(ts) {
+  if (!ts) return 0;
+  const d = ts.toDate ? ts.toDate() : new Date(ts);
+  return d.getTime();
+}
+function aplicarFiltros(notas) {
+  const f = estado.filtro;
+  const txt = f.texto.trim().toLowerCase();
+  const desdeMs = f.desde ? new Date(f.desde + "T00:00:00").getTime() : null;
+  const hastaMs = f.hasta ? new Date(f.hasta + "T23:59:59").getTime() : null;
+  return notas.filter(n => {
+    if (txt) {
+      const hay = (n.titulo||"").toLowerCase().includes(txt) ||
+                  (n.cuerpo||"").toLowerCase().includes(txt);
+      if (!hay) return false;
+    }
+    if (f.tipo && n.tipo !== f.tipo) return false;
+    if (f.tag && !(n.tags||[]).includes(f.tag)) return false;
+    if (desdeMs || hastaMs) {
+      const ms = fechaMs(n.createdAt);
+      if (desdeMs && ms < desdeMs) return false;
+      if (hastaMs && ms > hastaMs) return false;
+    }
+    return true;
+  });
+}
+function hayFiltroActivo() {
+  const f = estado.filtro;
+  return !!(f.texto.trim() || f.tipo || f.tag || f.desde || f.hasta);
+}
+
+// Escapa HTML y resalta cada aparición del término con <mark>. Seguro: escapa primero.
+function resaltar(texto, termino) {
+  const esc = escapeHtml(texto || "");
+  const t = (termino || "").trim();
+  if (!t) return esc;
+  // escapar el término para regex y para HTML (el texto ya está escapado)
+  const tEsc = escapeHtml(t).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  try {
+    return esc.replace(new RegExp("(" + tEsc + ")", "gi"), '<mark class="resaltado">$1</mark>');
+  } catch (e) {
+    return esc;
+  }
+}
+
+// Extrae un fragmento del cuerpo alrededor de la primera coincidencia, con resaltado.
+function fragmento(cuerpo, termino, contexto = 90) {
+  const c = cuerpo || "";
+  const t = (termino || "").trim();
+  if (!t) return "";
+  const idx = c.toLowerCase().indexOf(t.toLowerCase());
+  if (idx === -1) return ""; // la coincidencia estaba en el título, no en el cuerpo
+  let ini = Math.max(0, idx - contexto);
+  let fin = Math.min(c.length, idx + t.length + contexto);
+  // ajustar a límites de palabra para no cortar a mitad
+  if (ini > 0) { const sp = c.indexOf(" ", ini); if (sp !== -1 && sp < idx) ini = sp + 1; }
+  if (fin < c.length) { const sp = c.lastIndexOf(" ", fin); if (sp > idx + t.length) fin = sp; }
+  const pre = ini > 0 ? '<span class="elipsis">…</span> ' : "";
+  const post = fin < c.length ? ' <span class="elipsis">…</span>' : "";
+  return pre + resaltar(c.slice(ini, fin), t) + post;
+}
+
+/* ============================================================
+   RENDER DE UI
+   ============================================================ */
+function render() {
+  renderSidebar();
+  renderMain();
+}
+
+function renderSidebar() {
+  // resaltar navegación global según la vista
+  const nb = $("#nav-buscar"), np = $("#nav-pendientes");
+  if (nb) nb.classList.toggle("activo", estado.vista === "busqueda");
+  if (np) np.classList.toggle("activo", estado.vista === "pendientes");
+
+  const cont = $("#proyectos-cont");
+  cont.innerHTML = "";
+  estado.proyectos.forEach((p, pIdx) => {
+    const wrap = document.createElement("div");
+    wrap.className = "proyecto-item";
+    const abierto = estado.expandidos.has(p.id);
+
+    const header = document.createElement("div");
+    header.className = "proyecto-header" + (estado.proyectoActivo === p.id ? " activo" : "");
+
+    const caret = document.createElement("span");
+    caret.className = "caret" + (abierto ? " abierto" : "");
+    caret.textContent = "▶";
+    // el triángulo SOLO expande/colapsa, sin seleccionar
+    caret.onclick = (e) => {
+      e.stopPropagation();
+      if (estado.expandidos.has(p.id)) estado.expandidos.delete(p.id);
+      else estado.expandidos.add(p.id);
+      render();
+    };
+
+    const nombre = document.createElement("span");
+    nombre.className = "nombre";
+    nombre.textContent = p.nombre;
+
+    const btns = document.createElement("div");
+    btns.className = "mini-btns";
+    btns.innerHTML = `<button class="mover" title="Subir" ${pIdx===0?"disabled":""}>▲</button><button class="mover" title="Bajar" ${pIdx===estado.proyectos.length-1?"disabled":""}>▼</button><button title="Editar">✎</button><button title="Borrar">🗑</button>`;
+    btns.children[0].onclick = (e) => { e.stopPropagation(); moverProyecto(pIdx, -1); };
+    btns.children[1].onclick = (e) => { e.stopPropagation(); moverProyecto(pIdx, +1); };
+    btns.children[2].onclick = (e) => { e.stopPropagation(); abrirModalProyecto(p); };
+    btns.children[3].onclick = (e) => { e.stopPropagation(); confirmarBorrarProyecto(p); };
+
+    header.appendChild(caret);
+    header.appendChild(nombre);
+    header.appendChild(btns);
+    // clic en el cuerpo del header: selecciona el proyecto y lo expande
+    header.onclick = () => {
+      estado.vista = "seccion";
+      estado.proyectoActivo = p.id;
+      estado.expandidos.add(p.id);
+      render();
+    };
+    wrap.appendChild(header);
+
+    if (abierto) {
+      const lista = document.createElement("div");
+      lista.className = "seccion-lista";
+      const secs = estado.secciones.filter(s => s.proyectoId === p.id);
+      secs.forEach((s, sIdx) => {
+        const item = document.createElement("div");
+        item.className = "seccion-item" + (estado.seccionActiva === s.id ? " activo" : "");
+        const snom = document.createElement("span");
+        snom.className = "s-nombre";
+        snom.textContent = s.nombre;
+        const sbtns = document.createElement("div");
+        sbtns.className = "mini-btns";
+        sbtns.innerHTML = `<button class="mover" title="Subir" ${sIdx===0?"disabled":""}>▲</button><button class="mover" title="Bajar" ${sIdx===secs.length-1?"disabled":""}>▼</button><button title="Editar">✎</button><button title="Borrar">🗑</button>`;
+        sbtns.children[0].onclick = (e) => { e.stopPropagation(); moverSeccion(p.id, sIdx, -1); };
+        sbtns.children[1].onclick = (e) => { e.stopPropagation(); moverSeccion(p.id, sIdx, +1); };
+        sbtns.children[2].onclick = (e) => { e.stopPropagation(); abrirModalSeccion(s); };
+        sbtns.children[3].onclick = (e) => { e.stopPropagation(); confirmarBorrarSeccion(s); };
+        item.appendChild(snom);
+        item.appendChild(sbtns);
+        item.onclick = () => {
+          estado.vista = "seccion";
+          estado.proyectoActivo = p.id; estado.seccionActiva = s.id;
+          if (window._cerrarSidebarMovil) window._cerrarSidebarMovil();
+          render();
+        };
+        lista.appendChild(item);
+      });
+      const add = document.createElement("span");
+      add.className = "add-link";
+      add.textContent = "+ sección";
+      add.onclick = () => abrirModalSeccion(null, p.id);
+      lista.appendChild(add);
+      wrap.appendChild(lista);
+    }
+    cont.appendChild(wrap);
+  });
+}
+
+// HTML de una nota (reutilizado por las tres vistas). mostrarRuta añade el proyecto/sección.
+// termino (opcional): resalta coincidencias y muestra un fragmento del cuerpo cuando está colapsada.
+function notaHTML(n, mostrarRuta, termino) {
+  const abierta = estado.notasAbiertas.has(n.id);
+  const t = (termino || "").trim();
+  const tags = (n.tags||[]).map(t => `<span class="tag">#${escapeHtml(t)}</span>`).join("");
+  const adjuntos = (n.adjuntos||[]).length
+    ? `<div class="adjuntos-lista">` + n.adjuntos.map(a =>
+        `<a class="adjunto-link" href="${escapeAttr(a.url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">📎 ${escapeHtml(a.nombre||"archivo")}</a>`
+      ).join("") + `</div>`
+    : "";
+  const check = n.esAccion
+    ? `<span class="check-accion ${n.hecha?"hecha":""}" data-id="${n.id}">
+         <input type="checkbox" ${n.hecha?"checked":""}> ${n.hecha?"realizada":"pendiente"}</span>`
+    : "";
+  const taxonomia = (n.tipo || tags)
+    ? `<div style="margin:14px 0 0">${n.tipo?`<span class="tipo-badge">${escapeHtml(n.tipo)}</span> `:""}${tags}</div>`
+    : "";
+  const resumen = `<div class="nota-resumen">
+    ${n.esAccion?`<span class="punto-accion ${n.hecha?"hecha":""}" title="${n.hecha?"realizada":"pendiente"}"></span>`:""}
+    ${n.tipo?`<span class="tipo-badge" style="font-size:10px;padding:2px 8px">${escapeHtml(n.tipo)}</span>`:""}
+    <span>${fmtFechaCorta(n.createdAt)}</span>
+  </div>`;
+  let ruta = "";
+  if (mostrarRuta) {
+    const r = rutaDeNota(n);
+    ruta = `<span class="resultado-ruta" data-ir-sec="${r.secId}" data-ir-proy="${r.proyId}">${escapeHtml(r.proy)} · ${escapeHtml(r.sec)}</span>`;
+  }
+  // título resaltado si hay término
+  const tituloHTML = t ? resaltar(n.titulo||"(sin título)", t) : escapeHtml(n.titulo||"(sin título)");
+  // snippet del cuerpo (solo cuando colapsada y la coincidencia está en el cuerpo)
+  const snip = (t && !abierta) ? fragmento(n.cuerpo, t) : "";
+  const snippetHTML = snip ? `<div class="nota-snippet">${snip}</div>` : "";
+  // cuerpo expandido, resaltado si hay término
+  const cuerpoHTML = n.cuerpo
+    ? `<div class="nota-cuerpo">${t ? resaltar(n.cuerpo, t) : escapeHtml(n.cuerpo)}</div>`
+    : "";
+
+  return `<div class="nota ${abierta?"expandida":"colapsada"}" data-nota="${n.id}">
+    ${ruta}
+    <div class="nota-cabecera">
+      <span class="nota-flecha">▶</span>
+      <div class="nota-titulo">${tituloHTML}</div>
+      ${resumen}
+      <div class="mini-btns">
+        <button data-edit="${n.id}" title="Editar">✎</button>
+        <button data-del="${n.id}" title="Borrar">🗑</button>
+      </div>
+    </div>
+    ${snippetHTML}
+    <div class="nota-detalle">
+      ${cuerpoHTML}
+      ${adjuntos}
+      ${taxonomia}
+      <div class="nota-pie">
+        <div class="nota-meta">
+          <span>Creada ${fmtFecha(n.createdAt)}</span>
+          ${n.updatedAt ? `<span>· editada ${fmtFecha(n.updatedAt)}</span>` : ""}
+        </div>
+        ${check}
+      </div>
+    </div>
+  </div>`;
+}
+
+// Cablea los eventos de todas las notas presentes en #main
+function cablearNotas(main) {
+  main.querySelectorAll(".nota").forEach(div => {
+    const id = div.dataset.nota;
+    const cab = div.querySelector(".nota-cabecera");
+    cab.onclick = (e) => {
+      if (e.target.closest(".mini-btns")) return;
+      if (estado.notasAbiertas.has(id)) estado.notasAbiertas.delete(id);
+      else estado.notasAbiertas.add(id);
+      render();
+    };
+  });
+  main.querySelectorAll("[data-edit]").forEach(b => b.onclick = (e) => {
+    e.stopPropagation();
+    estado.editando = estado.notas.find(n => n.id === b.dataset.edit);
+    render();
+  });
+  main.querySelectorAll("[data-del]").forEach(b => b.onclick = (e) => {
+    e.stopPropagation();
+    if (confirm("¿Borrar esta nota? No se puede deshacer.")) borrarNota(b.dataset.del);
+  });
+  main.querySelectorAll(".check-accion").forEach(c => c.onclick = (e) => {
+    e.stopPropagation();
+    const n = estado.notas.find(x => x.id === c.dataset.id);
+    toggleHecha(n.id, !n.hecha);
+  });
+  // ir a la sección de origen desde un resultado
+  main.querySelectorAll(".resultado-ruta").forEach(r => r.onclick = () => {
+    estado.vista = "seccion";
+    estado.proyectoActivo = r.dataset.irProy;
+    estado.seccionActiva = r.dataset.irSec;
+    estado.expandidos.add(r.dataset.irProy);
+    render();
+  });
+}
+
+function renderMain() {
+  const main = $("#main");
+  let aviso = configIncompleta
+    ? `<div id="aviso-config">⚠️ Aún no has pegado tu configuración de Firebase. Reemplaza el bloque <code>firebaseConfig</code> en el código (PASO 1) para que la app funcione.</div>`
+    : "";
+
+  if (estado.editando !== undefined) { renderEditor(main, aviso); return; }
+  if (estado.vista === "busqueda")   { renderBusqueda(main, aviso); return; }
+  if (estado.vista === "pendientes") { renderPendientes(main, aviso); return; }
+
+  // --- Vista normal: notas de la sección activa ---
+  if (!estado.seccionActiva) {
+    main.innerHTML = `<div class="main-inner">` + aviso +
+      `<div class="vacio">Elige un proyecto y una sección<br>para empezar a escribir.</div></div>`;
+    return;
+  }
+  const sec = estado.secciones.find(s => s.id === estado.seccionActiva);
+  const proy = estado.proyectos.find(p => p.id === estado.proyectoActivo);
+  const notas = estado.notas.filter(n => n.seccionId === estado.seccionActiva);
+
+  let html = `<div class="main-inner">` + aviso + `<div id="main-header">
+    <div class="ruta">${escapeHtml(proy?.nombre||"")} &nbsp;·&nbsp; ${escapeHtml(sec?.nombre||"")}</div>
+    <h2>${escapeHtml(sec?.nombre||"")}</h2>
+    <button class="btn-nota-nueva" id="btn-nueva-nota">+ Nueva nota</button>
+  </div>`;
+
+  if (notas.length === 0) {
+    html += `<div class="vacio">Aún no hay notas aquí.</div>`;
+  } else {
+    html += `<div class="lista-controles">
+      <span style="color:var(--ink-faint)">${notas.length} nota${notas.length>1?"s":""}</span>
+      <span id="expandir-todo">expandir todas</span>
+      <span id="colapsar-todo">colapsar todas</span>
+    </div>`;
+    notas.forEach(n => { html += notaHTML(n, false); });
+  }
+  html += `</div>`;
+  main.innerHTML = html;
+
+  if ($("#btn-nueva-nota")) $("#btn-nueva-nota").onclick = () => { estado.editando = null; render(); };
+  if ($("#expandir-todo")) $("#expandir-todo").onclick = () => { notas.forEach(n => estado.notasAbiertas.add(n.id)); render(); };
+  if ($("#colapsar-todo")) $("#colapsar-todo").onclick = () => { notas.forEach(n => estado.notasAbiertas.delete(n.id)); render(); };
+  cablearNotas(main);
+}
+
+// ---------- Vista: BÚSQUEDA GLOBAL + FILTROS ----------
+function renderBusqueda(main, aviso) {
+  const f = estado.filtro;
+  const tiposOpts = `<option value="">Todos los tipos</option>` +
+    estado.tipos.map(t => `<option value="${escapeAttr(t.nombre)}" ${f.tipo===t.nombre?"selected":""}>${escapeHtml(t.nombre)}</option>`).join("");
+  const tagsOpts = `<option value="">Todas las etiquetas</option>` +
+    estado.tags.map(t => `<option value="${escapeAttr(t.nombre)}" ${f.tag===t.nombre?"selected":""}>#${escapeHtml(t.nombre)}</option>`).join("");
+
+  const resultados = hayFiltroActivo() ? aplicarFiltros(estado.notas) : [];
+
+  let html = `<div class="main-inner">` + aviso + `<div id="main-header">
+    <div class="ruta">Búsqueda en todo el gestor</div>
+    <h2>Buscar</h2>
+  </div>
+  <div class="filtros">
+    <div class="filtros-fila">
+      <div class="filtro-grupo crece">
+        <label>Texto (título o cuerpo)</label>
+        <input type="text" id="f-texto" placeholder="escribe para buscar…" value="${escapeAttr(f.texto)}">
+      </div>
+      <div class="filtro-grupo">
+        <label>Tipo</label>
+        <select id="f-tipo">${tiposOpts}</select>
+      </div>
+      <div class="filtro-grupo">
+        <label>Etiqueta</label>
+        <select id="f-tag">${tagsOpts}</select>
+      </div>
+    </div>
+    <div class="filtros-fila" style="margin-top:12px">
+      <div class="filtro-grupo">
+        <label>Desde</label>
+        <input type="date" id="f-desde" value="${escapeAttr(f.desde)}">
+      </div>
+      <div class="filtro-grupo">
+        <label>Hasta</label>
+        <input type="date" id="f-hasta" value="${escapeAttr(f.hasta)}">
+      </div>
+      <span class="filtro-limpiar" id="f-limpiar">limpiar filtros</span>
+    </div>
+  </div>`;
+
+  if (!hayFiltroActivo()) {
+    html += `<div class="vacio">Escribe algo o aplica un filtro<br>para buscar en todas tus notas.</div>`;
+  } else if (resultados.length === 0) {
+    html += `<div class="vacio">Sin resultados para esta búsqueda.</div>`;
+  } else {
+    html += `<div class="lista-controles"><span style="color:var(--ink-faint)">${resultados.length} resultado${resultados.length>1?"s":""}</span></div>`;
+    resultados.forEach(n => { html += notaHTML(n, true, f.texto); });
+  }
+  html += `</div>`;
+  main.innerHTML = html;
+
+  // cablear filtros (el de texto sin perder foco)
+  const txt = $("#f-texto");
+  txt.oninput = () => { estado.filtro.texto = txt.value; renderBusqueda(main, aviso); restaurarFoco(txt); };
+  $("#f-tipo").onchange = (e) => { estado.filtro.tipo = e.target.value; renderBusqueda(main, aviso); };
+  $("#f-tag").onchange = (e) => { estado.filtro.tag = e.target.value; renderBusqueda(main, aviso); };
+  $("#f-desde").onchange = (e) => { estado.filtro.desde = e.target.value; renderBusqueda(main, aviso); };
+  $("#f-hasta").onchange = (e) => { estado.filtro.hasta = e.target.value; renderBusqueda(main, aviso); };
+  $("#f-limpiar").onclick = () => {
+    estado.filtro = { texto:"", tipo:"", tag:"", desde:"", hasta:"" };
+    renderBusqueda(main, aviso);
+  };
+  cablearNotas(main);
+}
+
+// restaura el cursor al final del input de texto tras re-render
+function restaurarFoco(input) {
+  const nuevo = document.getElementById(input.id);
+  if (nuevo) { nuevo.focus(); const v = nuevo.value; nuevo.value = ""; nuevo.value = v; }
+}
+
+// ---------- Vista: ACCIONES PENDIENTES ----------
+function renderPendientes(main, aviso) {
+  const pendientes = estado.notas.filter(n => n.esAccion && !n.hecha);
+  // ordenar por fecha de creación descendente
+  pendientes.sort((a,b) => fechaMs(b.createdAt) - fechaMs(a.createdAt));
+
+  let html = `<div class="main-inner">` + aviso + `<div id="main-header">
+    <div class="ruta">Acciones sin completar en todo el gestor</div>
+    <h2>Pendientes</h2>
+  </div>`;
+
+  if (pendientes.length === 0) {
+    html += `<div class="vacio">No tienes acciones pendientes.</div>`;
+  } else {
+    html += `<div class="lista-controles"><span style="color:var(--ink-faint)">${pendientes.length} pendiente${pendientes.length>1?"s":""}</span></div>`;
+    pendientes.forEach(n => { html += notaHTML(n, true); });
+  }
+  html += `</div>`;
+  main.innerHTML = html;
+  cablearNotas(main);
+}
+
+/* ============================================================
+   MODALES (proyecto, sección, nota)
+   ============================================================ */
+function abrirModal(html) {
+  $("#modal").innerHTML = html;
+  $("#modal-bg").classList.add("abierto");
+}
+function cerrarModal() { $("#modal-bg").classList.remove("abierto"); }
+
+function abrirModalProyecto(p) {
+  abrirModal(`
+    <h3>${p?"Editar proyecto":"Nuevo proyecto"}</h3>
+    <label>Nombre</label><input type="text" id="mp-nombre" value="${p?escapeAttr(p.nombre):""}">
+    <label>Descripción (opcional)</label><input type="text" id="mp-desc" value="${p?escapeAttr(p.descripcion||""):""}">
+    <div class="modal-acciones">
+      <button class="btn sec" id="mp-cancelar">Cancelar</button>
+      <button class="btn" id="mp-guardar">Guardar</button>
+    </div>`);
+  $("#mp-cancelar").onclick = cerrarModal;
+  $("#mp-guardar").onclick = async () => {
+    const nombre = $("#mp-nombre").value.trim();
+    if (!nombre) return alert("El nombre es obligatorio");
+    if (p) await editarProyecto(p.id, nombre, $("#mp-desc").value.trim());
+    else await crearProyecto(nombre, $("#mp-desc").value.trim());
+    cerrarModal();
+  };
+}
+
+function abrirModalSeccion(s, proyectoId) {
+  abrirModal(`
+    <h3>${s?"Editar sección":"Nueva sección"}</h3>
+    <label>Nombre</label><input type="text" id="ms-nombre" value="${s?escapeAttr(s.nombre):""}">
+    <div class="modal-acciones">
+      <button class="btn sec" id="ms-cancelar">Cancelar</button>
+      <button class="btn" id="ms-guardar">Guardar</button>
+    </div>`);
+  $("#ms-cancelar").onclick = cerrarModal;
+  $("#ms-guardar").onclick = async () => {
+    const nombre = $("#ms-nombre").value.trim();
+    if (!nombre) return alert("El nombre es obligatorio");
+    if (s) await editarSeccion(s.id, nombre);
+    else await crearSeccion(nombre, proyectoId);
+    cerrarModal();
+  };
+}
+
+function renderEditor(main, aviso) {
+  const n = estado.editando;  // null = nueva, objeto = editar
+  const sec = estado.secciones.find(s => s.id === estado.seccionActiva);
+  const proy = estado.proyectos.find(p => p.id === estado.proyectoActivo);
+
+  const tiposOpts = `<option value="">— sin tipo —</option>` +
+    estado.tipos.map(t => `<option value="${escapeAttr(t.nombre)}" ${n&&n.tipo===t.nombre?"selected":""}>${escapeHtml(t.nombre)}</option>`).join("");
+  const tagChips = estado.tags.map(t => {
+    const sel = n && (n.tags||[]).includes(t.nombre);
+    return `<span class="tag-chip ${sel?"sel":""}" data-tag="${escapeAttr(t.nombre)}">#${escapeHtml(t.nombre)}</span>`;
+  }).join("");
+
+  main.innerHTML = `<div class="main-inner editor-modo">` + aviso + `
+    <div class="editor">
+      <span class="editor-volver" id="ed-volver">← volver a ${escapeHtml(sec?.nombre||"la sección")}</span>
+      <div class="ruta" style="margin-bottom:10px">${escapeHtml(proy?.nombre||"")} &nbsp;·&nbsp; ${escapeHtml(sec?.nombre||"")}</div>
+      <input type="text" class="titulo-input" id="ed-titulo" placeholder="Título de la nota" value="${n?escapeAttr(n.titulo||""):""}">
+      <textarea class="cuerpo-input" id="ed-cuerpo" placeholder="Escribe aquí…">${n?escapeHtml(n.cuerpo||""):""}</textarea>
+      <div class="editor-sep"></div>
+      <div class="editor-campos">
+        <div class="editor-campo">
+          <label>Tipo</label>
+          <select id="ed-tipo">${tiposOpts}</select>
+        </div>
+        <div class="editor-campo">
+          <label>Etiquetas</label>
+          <div class="tag-chips" id="ed-tags">${tagChips||'<span style="color:var(--ink-faint);font-size:13px">No hay etiquetas. Créalas en "Etiquetas".</span>'}</div>
+        </div>
+        <div class="editor-campo">
+          <label>Adjuntos</label>
+          <div id="ed-adjuntos"></div>
+          <div style="display:flex;gap:14px;align-items:center;margin-top:4px;flex-wrap:wrap">
+            <span class="add-link" id="ed-add-adjunto" style="padding-left:0">+ añadir enlace</span>
+            <span class="add-link" id="ed-subir" style="padding-left:0">⬆ subir archivo</span>
+            <span id="ed-progreso" style="font-size:12.5px;color:var(--ink-faint)"></span>
+          </div>
+        </div>
+        <label class="editor-inline-check"><input type="checkbox" id="ed-esaccion" ${n&&n.esAccion?"checked":""}> Es una acción (con check pendiente / realizada)</label>
+      </div>
+      <div class="editor-acciones">
+        <button class="btn" id="ed-guardar">${n?"Guardar cambios":"Crear nota"}</button>
+        <button class="btn sec" id="ed-cancelar">Cancelar</button>
+      </div>
+    </div>
+  </div>`;
+
+  // --- adjuntos: estado local y render dinámico ---
+  const adjuntos = n && Array.isArray(n.adjuntos) ? n.adjuntos.map(a => ({...a})) : [];
+  // archivos subidos en esta sesión de edición pero aún no guardados (para limpiar si se cancela)
+  const subidosNuevos = [];
+  function renderAdjuntos() {
+    const cont = $("#ed-adjuntos");
+    cont.innerHTML = "";
+    adjuntos.forEach((a, i) => {
+      const fila = document.createElement("div");
+      fila.className = "adj-fila";
+      if (a.storagePath) {
+        // archivo subido: nombre editable + etiqueta "archivo", sin campo de URL
+        fila.innerHTML = `
+          <input type="text" placeholder="nombre" value="${escapeAttr(a.nombre||"")}" data-campo="nombre" data-i="${i}">
+          <a href="${escapeAttr(a.url)}" target="_blank" rel="noopener" class="adjunto-link" style="white-space:nowrap">📎 ver</a>
+          <button data-quitar="${i}" title="Quitar">✕</button>`;
+        fila.querySelector("input").oninput = (e) => { adjuntos[i].nombre = e.target.value; };
+      } else {
+        // adjunto por enlace: nombre + url editables
+        fila.innerHTML = `
+          <input type="text" placeholder="nombre" value="${escapeAttr(a.nombre||"")}" data-campo="nombre" data-i="${i}">
+          <input type="text" placeholder="pegar enlace" value="${escapeAttr(a.url||"")}" data-campo="url" data-i="${i}">
+          <button data-quitar="${i}" title="Quitar">✕</button>`;
+        fila.querySelectorAll("input").forEach(inp => {
+          inp.oninput = () => { adjuntos[inp.dataset.i][inp.dataset.campo] = inp.value; };
+        });
+      }
+      fila.querySelector("[data-quitar]").onclick = async () => {
+        const quitado = adjuntos[i];
+        // si era un archivo subido en esta sesión, bórralo de Storage al quitarlo
+        if (quitado.storagePath && subidosNuevos.includes(quitado.storagePath)) {
+          await borrarArchivoStorage(quitado.storagePath);
+          const ix = subidosNuevos.indexOf(quitado.storagePath); if (ix>=0) subidosNuevos.splice(ix,1);
+        }
+        // nota: si era un archivo ya guardado de antes, se borrará al guardar la nota (ver más abajo)
+        adjuntos.splice(i, 1); renderAdjuntos();
+      };
+      cont.appendChild(fila);
+    });
+  }
+  renderAdjuntos();
+  $("#ed-add-adjunto").onclick = () => { adjuntos.push({ nombre: "", url: "" }); renderAdjuntos(); };
+
+  // subir archivo a Storage
+  $("#ed-subir").onclick = () => {
+    if (!storage) { alert("Storage no está configurado."); return; }
+    const inp = document.createElement("input");
+    inp.type = "file";
+    inp.onchange = async () => {
+      const file = inp.files && inp.files[0];
+      if (!file) return;
+      const prog = $("#ed-progreso");
+      try {
+        const adj = await subirArchivo(file, (pct) => { prog.textContent = `subiendo… ${pct}%`; });
+        prog.textContent = "✓ subido";
+        subidosNuevos.push(adj.storagePath);
+        adjuntos.push(adj);
+        renderAdjuntos();
+        setTimeout(() => { if (prog.textContent === "✓ subido") prog.textContent = ""; }, 2500);
+      } catch (e) {
+        prog.textContent = "";
+        alert("No se pudo subir el archivo: " + e.message);
+      }
+    };
+    inp.click();
+  };
+
+  // --- etiquetas ---
+  const tagsSel = new Set(n ? (n.tags||[]) : []);
+  $("#ed-tags").querySelectorAll(".tag-chip").forEach(chip => {
+    chip.onclick = () => {
+      const t = chip.dataset.tag;
+      if (tagsSel.has(t)) { tagsSel.delete(t); chip.classList.remove("sel"); }
+      else { tagsSel.add(t); chip.classList.add("sel"); }
+    };
+  });
+
+  // textarea que crece con el contenido
+  const ta = $("#ed-cuerpo");
+  const autoCrecer = () => { ta.style.height = "auto"; ta.style.height = Math.max(280, ta.scrollHeight) + "px"; };
+  ta.addEventListener("input", autoCrecer);
+  autoCrecer();
+
+  function salir() {
+    // si se cancela, limpiar de Storage los archivos subidos en esta sesión y no guardados
+    subidosNuevos.forEach(path => borrarArchivoStorage(path));
+    estado.editando = undefined; render();
+  }
+  $("#ed-volver").onclick = salir;
+  $("#ed-cancelar").onclick = salir;
+  $("#ed-guardar").onclick = async () => {
+    const titulo = $("#ed-titulo").value.trim();
+    if (!titulo) return alert("El título es obligatorio");
+    // adjuntos finales: enlaces (con url) o archivos subidos (con storagePath)
+    const adjFinales = adjuntos
+      .filter(a => a.storagePath || (a.url||"").trim())
+      .map(a => a.storagePath
+        ? { nombre: (a.nombre||"").trim() || "archivo", url: a.url, storagePath: a.storagePath }
+        : { nombre: (a.nombre||"").trim() || "archivo", url: a.url.trim() });
+    // borrar de Storage los archivos que estaban en la nota original y ya no están
+    if (n && Array.isArray(n.adjuntos)) {
+      const pathsFinales = adjFinales.filter(a => a.storagePath).map(a => a.storagePath);
+      const quitados = n.adjuntos.filter(a => a.storagePath && !pathsFinales.includes(a.storagePath));
+      for (const a of quitados) { await borrarArchivoStorage(a.storagePath); }
+    }
+    const data = {
+      titulo,
+      cuerpo: $("#ed-cuerpo").value,
+      tipo: $("#ed-tipo").value,
+      tags: Array.from(tagsSel),
+      adjuntos: adjFinales,
+      esAccion: $("#ed-esaccion").checked,
+      hecha: n ? (n.hecha||false) : false,
+      seccionId: estado.seccionActiva,
+    };
+    if (n) await editarNota(n.id, data);
+    else await crearNota(data);
+    estado.editando = undefined;
+    // cargarTodo() dentro de editar/crearNota ya llama render()
+  };
+}
+
+// ---------- Confirmaciones de borrado en cascada ----------
+function confirmarBorrarProyecto(p) {
+  const secs = estado.secciones.filter(s => s.proyectoId === p.id);
+  const secIds = secs.map(s => s.id);
+  const nNotas = estado.notas.filter(n => secIds.includes(n.seccionId)).length;
+  if (confirm(`Vas a borrar el proyecto "${p.nombre}", sus ${secs.length} sección(es) y ${nNotas} nota(s).\n\nEsto no se puede deshacer. ¿Continuar?`)) {
+    borrarProyecto(p.id);
+  }
+}
+function confirmarBorrarSeccion(s) {
+  const nNotas = estado.notas.filter(n => n.seccionId === s.id).length;
+  if (confirm(`Vas a borrar la sección "${s.nombre}" y sus ${nNotas} nota(s).\n\nEsto no se puede deshacer. ¿Continuar?`)) {
+    borrarSeccion(s.id);
+  }
+}
+
+// ---------- Gestión de catálogos ----------
+function abrirGestionTipos() {
+  const lista = estado.tipos.map(t =>
+    `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #eee">
+      <span>${escapeHtml(t.nombre)}</span>
+      <button class="mini-btns" data-deltipo="${t.id}" style="border:none;background:none;cursor:pointer">🗑</button>
+    </div>`).join("") || '<div style="color:#aaa">Sin tipos aún.</div>';
+  abrirModal(`
+    <h3>Gestionar tipos</h3>
+    <div style="display:flex;gap:8px;margin-bottom:14px">
+      <input type="text" id="nuevo-tipo" placeholder="Nuevo tipo (ej: idea, conclusión, acción)">
+      <button class="btn" id="add-tipo">Añadir</button>
+    </div>
+    ${lista}
+    <div class="modal-acciones"><button class="btn sec" id="cerrar-tipos">Cerrar</button></div>`);
+  $("#cerrar-tipos").onclick = cerrarModal;
+  $("#add-tipo").onclick = async () => {
+    const v = $("#nuevo-tipo").value.trim();
+    if (v) { await crearTipo(v); abrirGestionTipos(); }
+  };
+  document.querySelectorAll("[data-deltipo]").forEach(b => b.onclick = async () => {
+    await borrarTipo(b.dataset.deltipo); abrirGestionTipos();
+  });
+}
+function abrirGestionTags() {
+  const lista = estado.tags.map(t =>
+    `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #eee">
+      <span>#${escapeHtml(t.nombre)}</span>
+      <button data-deltag="${t.id}" style="border:none;background:none;cursor:pointer">🗑</button>
+    </div>`).join("") || '<div style="color:#aaa">Sin etiquetas aún.</div>';
+  abrirModal(`
+    <h3>Gestionar etiquetas</h3>
+    <div style="display:flex;gap:8px;margin-bottom:14px">
+      <input type="text" id="nuevo-tag" placeholder="Nueva etiqueta (sin #)">
+      <button class="btn" id="add-tag">Añadir</button>
+    </div>
+    ${lista}
+    <div class="modal-acciones"><button class="btn sec" id="cerrar-tags">Cerrar</button></div>`);
+  $("#cerrar-tags").onclick = cerrarModal;
+  $("#add-tag").onclick = async () => {
+    const v = $("#nuevo-tag").value.trim().replace(/^#/, "");
+    if (v) { await crearTag(v); abrirGestionTags(); }
+  };
+  document.querySelectorAll("[data-deltag]").forEach(b => b.onclick = async () => {
+    await borrarTag(b.dataset.deltag); abrirGestionTags();
+  });
+}
+
+// ---------- Escapes ----------
+function escapeHtml(s){return (s||"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
+function escapeAttr(s){return escapeHtml(s).replace(/"/g,"&quot;");}
+
+// ---------- Wiring de botones globales ----------
+window.addEventListener("DOMContentLoaded", () => {
+  $("#btn-nuevo-proyecto").onclick = () => abrirModalProyecto(null);
+  $("#btn-tipos").onclick = abrirGestionTipos;
+  $("#btn-tags").onclick = abrirGestionTags;
+  $("#btn-exportar").onclick = exportarRespaldo;
+  $("#btn-importar").onclick = pedirArchivoEImportar;
+  $("#nav-buscar").onclick = () => {
+    estado.vista = "busqueda"; estado.editando = undefined;
+    if (window._cerrarSidebarMovil) window._cerrarSidebarMovil();
+    render();
+  };
+  $("#nav-pendientes").onclick = () => {
+    estado.vista = "pendientes"; estado.editando = undefined;
+    if (window._cerrarSidebarMovil) window._cerrarSidebarMovil();
+    render();
+  };
+  $("#modal-bg").onclick = (e) => { if (e.target.id === "modal-bg") cerrarModal(); };
+
+  // --- menú móvil ---
+  const toggleSidebar = (abrir) => {
+    const sb = $("#sidebar"), ov = $("#sidebar-overlay");
+    const mostrar = abrir !== undefined ? abrir : !sb.classList.contains("abierto");
+    sb.classList.toggle("abierto", mostrar);
+    ov.classList.toggle("visible", mostrar);
+  };
+  $("#menu-toggle").onclick = () => toggleSidebar();
+  $("#sidebar-overlay").onclick = () => toggleSidebar(false);
+  // exponer para que al elegir sección en móvil se cierre
+  window._cerrarSidebarMovil = () => { if (window.innerWidth <= 760) toggleSidebar(false); };
+
+  if (!configIncompleta) cargarTodo();
+  else render();
+});
+</script>
+
+<div id="app">
+  <button id="menu-toggle" aria-label="Menú">☰</button>
+  <div id="sidebar-overlay"></div>
+  <div id="sidebar">
+    <h1>Gestor</h1>
+    <div class="sub">de proyectos</div>
+    <div class="nav-global">
+      <div class="nav-item" id="nav-buscar">🔍 Buscar</div>
+      <div class="nav-item" id="nav-pendientes">◔ Pendientes</div>
+    </div>
+    <div class="nav-sep"></div>
+    <div id="proyectos-cont"></div>
+    <div style="margin-top:10px;padding:0 4px">
+      <span class="add-link" id="btn-nuevo-proyecto">+ nuevo proyecto</span>
+    </div>
+    <div class="sidebar-foot">
+      <div style="display:flex;gap:8px;margin-bottom:8px">
+        <button class="btn sec" id="btn-tipos" style="flex:1;font-size:12.5px;padding:8px">Tipos</button>
+        <button class="btn sec" id="btn-tags" style="flex:1;font-size:12.5px;padding:8px">Etiquetas</button>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="btn sec" id="btn-exportar" style="flex:1;font-size:12.5px;padding:8px">⬇ Exportar</button>
+        <button class="btn sec" id="btn-importar" style="flex:1;font-size:12.5px;padding:8px">⬆ Importar</button>
+      </div>
+    </div>
+  </div>
+  <div id="main"></div>
+</div>
+
+<div id="modal-bg"><div id="modal"></div></div>
+
+</body>
+</html>
